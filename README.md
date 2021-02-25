@@ -39,7 +39,7 @@ the endpoint `https://example.com/cool_endpoint`.
 **Other Stuff**
 
 This tool is inherently insecure, since there is no authentication baked in. Rather,
-it is reccomended to use a VPS or some sort of private network (I recommend [Tailscale](https://tailscale.com)) to ensure that this server exposed publicly. This tool is used
+it is reccomended to use a VPC or some sort of private network (I recommend [Tailscale](https://tailscale.com)) to ensure that this server exposed publicly. This tool is used
 in production for [Operand](https://operand.ai), though if reliability is important
 I'd reccomend building some additional stuff on top of this. It would be great
 to eventually have multiple hosted Mac minis and automatically detect machine failures,
