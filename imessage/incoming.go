@@ -184,7 +184,7 @@ func (m *Messages) checkForNewMessages() {
 		// Extract the text from the incoming message.
 		text := strings.TrimSpace(query.GetText("text"))
 
-		// If there is an attachment, just print the filename.
+		// If there is an attachment, handle it.
 		var attachData []byte
 		attach, attachType := query.GetText("attachment"), query.GetText("attachment_type")
 		if attach != "" && attachType != "attachType" {
