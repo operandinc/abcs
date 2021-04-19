@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/operandinc/abcs/imessage"
 	"github.com/pkg/errors"
-	"golift.io/imessage"
 )
 
 var (
