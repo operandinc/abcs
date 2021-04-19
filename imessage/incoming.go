@@ -1,21 +1,15 @@
 package imessage
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 	"io"
-	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"crawshaw.io/sqlite"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -147,110 +141,6 @@ func (m *Messages) fsnotifySQL(watcher *fsnotify.Watcher, ticker *time.Ticker) {
 			m.checkErr(err, "fsnotify watcher")
 		}
 	}
-}
-
-type loc struct {
-	Latitude  float32
-	Longitude float32
-}
-
-func (l loc) String() string {
-	return fmt.Sprintf("!location(%f,%f)", l.Latitude, l.Longitude)
-}
-
-func possiblyExtractLocation(conn *sqlite.Conn, msgid int64) (*loc, error) {
-	sql := `SELECT attachment_id FROM message_attachment_join WHERE message_id = $id`
-	query, _, err := conn.PrepareTransient(sql)
-	if err != nil {
-		return nil, err
-	}
-	query.SetInt64("$id", msgid)
-	var attachmentId int64 = -1
-	for {
-		if hasRow, err := query.Step(); err != nil {
-			return nil, err
-		} else if !hasRow {
-			break
-		}
-		attachmentId = query.GetInt64("attachment_id")
-	}
-	// If we didn't find an attachment, then we can just return nil.
-	if attachmentId == -1 {
-		return nil, nil
-	}
-
-	sql = `SELECT filename, mime_type as mtype, transfer_state FROM attachment WHERE rowid = $id`
-	query, _, err = conn.PrepareTransient(sql)
-	if err != nil {
-		return nil, err
-	}
-	query.SetInt64("$id", attachmentId)
-	var (
-		found         bool
-		mtype         string
-		filename      string
-		transferState int
-	)
-	for {
-		if hasRow, err := query.Step(); err != nil {
-			return nil, err
-		} else if !hasRow {
-			break
-		}
-		found = true
-		filename = query.GetText("filename")
-		mtype = query.GetText("mtype")
-		transferState = int(query.GetInt64("transfer_state"))
-	}
-	// For some reason we couldn't get the attachment, let's just be safe and return nil here.
-	// We also make sure we have the correct mime type, if we don't, we just ignore it.
-	// TODO(morgangallant): handle non-location attachments.
-	if !found || mtype != "text/x-vlocation" {
-		return nil, nil
-	}
-
-	log.Printf("transfer state: %d", transferState)
-
-	// Now we can read and parse the file and return the *loc object.
-	// We may need to retry this a few times.
-	const maxRetries = 5
-	var ldata []byte
-	for i := 0; i < maxRetries; i++ {
-		log.Printf("attempt %d to load %s", i, filename)
-		ldata, err = ioutil.ReadFile(filename)
-		if err != nil {
-			if os.IsNotExist(err) {
-				time.Sleep(200 * time.Millisecond)
-				continue
-			} else {
-				return nil, err
-			}
-		}
-		break
-	}
-	if len(ldata) == 0 {
-		return nil, errors.New("failed to load attachment data from disk")
-	}
-	idx := bytes.Index(ldata, []byte("?ll="))
-	if idx == -1 {
-		return nil, errors.New("failed to index ?ll=")
-	}
-	ldata = ldata[idx+4:]
-	idx = bytes.Index(ldata, []byte("&"))
-	if idx == -1 {
-		return nil, errors.New("failed to index &")
-	}
-	ldata = ldata[:idx]
-	coords := strings.Split(strings.ReplaceAll(string(ldata), "\\", ""), ",")
-	lat, err := strconv.ParseFloat(coords[0], 32)
-	if err != nil {
-		return nil, err
-	}
-	lng, err := strconv.ParseFloat(coords[1], 32)
-	if err != nil {
-		return nil, err
-	}
-	return &loc{Latitude: float32(lat), Longitude: float32(lng)}, nil
 }
 
 func (m *Messages) checkForNewMessages() {
