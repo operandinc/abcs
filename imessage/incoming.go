@@ -187,7 +187,7 @@ func (m *Messages) checkForNewMessages() {
 		// If there is an attachment, handle it.
 		var attachData []byte
 		attach, attachType := query.GetText("attachment"), query.GetText("attachment_type")
-		if attach != "" && attachType != "attachType" {
+		if attach != "" && attachType != "" {
 			attach = strings.ReplaceAll(attach, "~", m.Config.HomePath)
 			f, err := os.Open(attach)
 			if err != nil {
