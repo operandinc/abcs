@@ -70,12 +70,19 @@ func (s *server) sendMessageHandler() http.HandlerFunc {
 }
 
 type endpointRequest struct {
-	From    string `json:"from"`
-	Message string `json:"message"`
+	From           string `json:"from"`
+	Message        string `json:"message"`
+	Attachment     []byte `json:"attachment,omitempty"`
+	AttachmentType string `json:"attachment_type,omitempty"`
 }
 
-func (s *server) notifyEndpoint(from, msg string) error {
-	buf, err := json.Marshal(endpointRequest{From: from, Message: msg})
+func (s *server) notifyEndpoint(incoming imessage.Incoming) error {
+	buf, err := json.Marshal(endpointRequest{
+		From:           incoming.From,
+		Message:        incoming.Text,
+		Attachment:     incoming.Attachment,
+		AttachmentType: incoming.AttachmentType,
+	})
 	if err != nil {
 		return err
 	}
@@ -97,19 +104,39 @@ func (s *server) notifyEndpoint(from, msg string) error {
 
 func (s *server) handleIncoming() {
 	for msg := range s.incoming {
-		log.Printf("(from %s) %s", msg.From, msg.Text)
-		if err := s.notifyEndpoint(msg.From, msg.Text); err != nil {
+		if msg.Attachment != nil {
+			log.Printf("(from %s) %s (w/ attachment %s - size %d)", msg.From, msg.Text, msg.AttachmentType, len(msg.Attachment))
+		} else {
+			log.Printf("(from %s) %s", msg.From, msg.Text)
+		}
+		if err := s.notifyEndpoint(msg); err != nil {
 			s.logger.Printf("failed to notify endpoint: %v", err)
 		}
 	}
 }
 
-func getiChatDBLocation() (string, error) {
+func currentUser() (string, error) {
 	u, err := user.Current()
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("/Users/%s/Library/Messages/chat.db", u.Username), nil
+	return u.Username, nil
+}
+
+func getHomePath() (string, error) {
+	user, err := currentUser()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("/Users/%s", user), nil
+}
+
+func getiChatDBLocation() (string, error) {
+	user, err := currentUser()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("/Users/%s/Library/Messages/chat.db", user), nil
 }
 
 const (
@@ -141,9 +168,14 @@ func newServer(listen, endpoint string) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
+	homepath, err := getHomePath()
+	if err != nil {
+		return nil, err
+	}
 	var logger imessage.Logger = &sentryLogger{}
 	c := &imessage.Config{
 		SQLPath:   dbpath,
+		HomePath:  homepath,
 		QueueSize: queueSize,
 		Retries:   retries,
 		ErrorLog:  logger,

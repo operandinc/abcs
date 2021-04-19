@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -24,9 +25,11 @@ var DefaultDuration = 200 * time.Millisecond
 // Incoming is represents a message from someone. This struct is filled out
 // and sent to incoming callback methods and/or to bound channels.
 type Incoming struct {
-	RowID int64  // RowID is the unique database row id.
-	From  string // From is the handle of the user who sent the message.
-	Text  string // Text is the body of the message.
+	RowID          int64  // RowID is the unique database row id.
+	From           string // From is the handle of the user who sent the message.
+	Text           string // Text is the body of the message.
+	Attachment     []byte // Attachment data.
+	AttachmentType string // Attachment MIME type.
 }
 
 // Callback is the type used to return an incoming message to the consuming app.
@@ -256,9 +259,20 @@ func (m *Messages) checkForNewMessages() {
 		return // error
 	}
 	defer m.closeDB(db)
-	sql := `SELECT message.rowid as rowid, handle.id as handle, cache_has_attachments, message.text as text ` +
-		`FROM message INNER JOIN handle ON message.handle_id = handle.ROWID ` +
-		`WHERE is_from_me=0 AND message.rowid > $id ORDER BY message.date ASC`
+	sql := `SELECT m.rowid as rowid, handle.id as handle, m.text as text, ` +
+		`CASE cache_has_attachments ` +
+		`WHEN 0 THEN Null ` +
+		`WHEN 1 THEN filename ` +
+		`END AS attachment, ` +
+		`CASE cache_has_attachments ` +
+		`WHEN 0 THEN Null ` +
+		`WHEN 1 THEN mime_type ` +
+		`END as attachment_type ` +
+		`FROM message AS m ` +
+		`LEFT JOIN message_attachment_join AS maj ON message_id = m.rowid ` +
+		`LEFT JOIN attachment AS a ON a.rowid = maj.attachment_id ` +
+		`LEFT JOIN handle ON m.handle_id = handle.ROWID ` +
+		`WHERE is_from_me=0 AND m.rowid > $id ORDER BY m.date ASC`
 	query, _, err := db.PrepareTransient(sql)
 	if err != nil {
 		return
@@ -280,24 +294,30 @@ func (m *Messages) checkForNewMessages() {
 		// Extract the text from the incoming message.
 		text := strings.TrimSpace(query.GetText("text"))
 
-		// If there is an attachment, we should check if this is a location object.
-		// If it is, we rewrite the text field of the Incoming message struct with loc.String().
-		hasAttachments := query.GetInt64("cache_has_attachments") == 1
-		if hasAttachments {
-			loc, err := possiblyExtractLocation(db, m.currentID)
+		// If there is an attachment, just print the filename.
+		var attachData []byte
+		attach, attachType := query.GetText("attachment"), query.GetText("attachment_type")
+		if attach != "" && attachType != "attachType" {
+			attach = strings.ReplaceAll(attach, "~", m.Config.HomePath)
+			f, err := os.Open(attach)
 			if err != nil {
-				m.ErrorLog.Printf("failed to extract loc from msg with attachment: %q", err)
+				m.ErrorLog.Printf("failed to open file %s: %v", attach, err)
 				return
 			}
-			if loc != nil {
-				text = loc.String()
+			defer f.Close()
+			attachData, err = io.ReadAll(f)
+			if err != nil {
+				m.ErrorLog.Printf("failed to read data from attachment: %v", err)
+				return
 			}
 		}
 
 		m.inChan <- Incoming{
-			RowID: m.currentID,
-			From:  strings.TrimSpace(query.GetText("handle")),
-			Text:  text,
+			RowID:          m.currentID,
+			From:           strings.TrimSpace(query.GetText("handle")),
+			Text:           text,
+			Attachment:     attachData,
+			AttachmentType: attachType,
 		}
 	}
 }

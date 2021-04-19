@@ -34,6 +34,9 @@ type Config struct {
 	Timeout int `xml:"timeout" json:"timeout,omitempty" toml:"timeout,_omitempty" yaml:"timeout"`
 	// SQLPath is the location if the iMessage database.
 	SQLPath string `xml:"sql_path" json:"sql_path,omitempty" toml:"sql_path,_omitempty" yaml:"sql_path"`
+	// HomePath is the location of the home directory of the user.
+	// Basically, what ever ~ maps to. If your user is `mg`, then this should be `/Users/mg`.
+	HomePath string `xml:"home_path" json:"home_path,omitempty" toml:"home_path,_omitempty" yaml:"home_path"`
 	// Loggers.
 	ErrorLog Logger `xml:"-" json:"-" toml:"-" yaml:"-"`
 	DebugLog Logger `xml:"-" json:"-" toml:"-" yaml:"-"`
