@@ -149,7 +149,7 @@ func (m *Messages) checkForNewMessages() {
 		return // error
 	}
 	defer m.closeDB(db)
-	sql := `SELECT m.rowid as rowid, handle.id as handle, m.text as text, ` +
+	sql := `SELECT m.rowid as rowid, handle.id as handle, m.text as text, m.service as service, ` +
 		`CASE cache_has_attachments ` +
 		`WHEN 0 THEN Null ` +
 		`WHEN 1 THEN filename ` +
@@ -202,9 +202,19 @@ func (m *Messages) checkForNewMessages() {
 			}
 		}
 
+		// Record the protocol used for the message.
+		// This is used for replying to messages to make sure we send messages
+		// over the same protocol that we are receiving them on.
+		from := strings.TrimSpace(query.GetText("handle"))
+		var proto protocol = imessage
+		if query.GetText("service") == "SMS" {
+			proto = sms
+		}
+		recordChatProtocol(from, proto)
+
 		m.inChan <- Incoming{
 			RowID:          m.currentID,
-			From:           strings.TrimSpace(query.GetText("handle")),
+			From:           from,
 			Text:           text,
 			Attachment:     attachData,
 			AttachmentType: attachType,

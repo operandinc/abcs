@@ -124,11 +124,10 @@ func (m *Messages) processOutgoingMessages() {
 
 // sendiMessage runs the applesripts to send a message and close the iMessage windows.
 func (m *Messages) sendiMessage(msg Outgoing) *Response {
-	arg := []string{`tell application "Messages" to send "` + msg.Text + `" to buddy "` + msg.To +
-		`" of (1st service whose service type = iMessage)`}
+	proto := getChatProtocol(msg.To)
+	arg := []string{fmt.Sprintf(`tell application "Messages" to send "%s" to participant "%s" of (1st account whose service type = %s)`, msg.Text, msg.To, proto.String())}
 	if _, err := os.Stat(msg.Text); err == nil && msg.File {
-		arg = []string{`tell application "Messages" to send (POSIX file ("` + msg.Text + `")) to buddy "` + msg.To +
-			`" of (1st service whose service type = iMessage)`}
+		arg = []string{fmt.Sprintf(`tell application "Messages" to send (POSIX file ("%s")) to participant "%s" of (1st account whose service type = %s)`, msg.Text, msg.To, proto.String())}
 	}
 	arg = append(arg, `tell application "Messages" to close every window`)
 	sent, errs := m.RunAppleScript(arg)
