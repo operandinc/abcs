@@ -19,6 +19,7 @@ import (
 var (
 	listenAddr   = flag.String("listen", "localhost:11106", "address to listen on")
 	endpointAddr = flag.String("endpoint", "https://example.com/abcs", "endpoint to send messages to")
+	requestToken = flag.String("token", "", "token to include with requests")
 )
 
 const serverName = "abcs"
@@ -70,19 +71,26 @@ func (s *server) sendMessageHandler() http.HandlerFunc {
 }
 
 type endpointRequest struct {
-	From           string `json:"from"`
-	Message        string `json:"message"`
-	Attachment     []byte `json:"attachment,omitempty"`
-	AttachmentType string `json:"attachment_type,omitempty"`
+	From           string  `json:"from"`
+	Message        string  `json:"message"`
+	Attachment     []byte  `json:"attachment,omitempty"`
+	AttachmentType string  `json:"attachment_type,omitempty"`
+	Token          *string `json:"token,omitempty"`
 }
 
 func (s *server) notifyEndpoint(incoming imessage.Incoming) error {
-	buf, err := json.Marshal(endpointRequest{
+	er := endpointRequest{
 		From:           incoming.From,
 		Message:        incoming.Text,
 		Attachment:     incoming.Attachment,
 		AttachmentType: incoming.AttachmentType,
-	})
+	}
+	// If a request token was specified, then we include it in the request.
+	if requestToken != nil && *requestToken != "" {
+		t := *requestToken
+		er.Token = &t
+	}
+	buf, err := json.Marshal(er)
 	if err != nil {
 		return err
 	}
