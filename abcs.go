@@ -50,10 +50,19 @@ type server struct {
 	underlying *http.Server
 }
 
+var attachmentExtensions = map[string]string{
+	"image/png":       "png",
+	"image/jpeg":      "jpeg",
+	"image/heic":      "heic",
+	"application/pdf": "pdf",
+}
+
 func (s *server) sendMessageHandler() http.HandlerFunc {
 	type request struct {
-		To      string `json:"to"`
-		Message string `json:"message"`
+		To             string `json:"to"`
+		Message        string `json:"message"`
+		Attachment     []byte `json:"attachment,omitempty"`
+		AttachmentType string `json:"attachment_type,omitempty"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req request
@@ -61,11 +70,34 @@ func (s *server) sendMessageHandler() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		log.Printf("(to %s) %s", req.To, req.Message)
-		s.msgs.Send(imessage.Outgoing{
-			To:   req.To,
-			Text: req.Message,
-		})
+		out := imessage.Outgoing{To: req.To}
+		if req.Attachment != nil && req.AttachmentType != "" {
+			log.Printf("(to %s) [file] %d bytes (%s)", req.To, len(req.Attachment), req.AttachmentType)
+			ext, ok := attachmentExtensions[req.AttachmentType]
+			if !ok {
+				http.Error(w, "unknown attachment type", http.StatusBadRequest)
+				return
+			}
+			file, err := os.CreateTemp("", fmt.Sprintf("abcs-*.%s", ext))
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			defer file.Close()
+			if _, err := file.Write(req.Attachment); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			out.Text = file.Name()
+			out.File = true
+			out.Call = func(_ *imessage.Response) {
+				os.Remove(file.Name())
+			}
+		} else {
+			log.Printf("(to %s) %s", req.To, req.Message)
+			out.Text = req.Message
+		}
+		s.msgs.Send(out)
 		w.WriteHeader(http.StatusOK)
 	}
 }
