@@ -19,7 +19,6 @@ import (
 var (
 	listenAddr   = flag.String("listen", "localhost:11106", "address to listen on")
 	endpointAddr = flag.String("endpoint", "https://example.com/abcs", "endpoint to send messages to")
-	requestToken = flag.String("token", "", "token to include with requests")
 )
 
 const serverName = "abcs"
@@ -55,6 +54,7 @@ var attachmentExtensions = map[string]string{
 	"image/jpeg":      "jpeg",
 	"image/heic":      "heic",
 	"application/pdf": "pdf",
+	"text/vcard":      "vcf",
 }
 
 func (s *server) sendMessageHandler() http.HandlerFunc {
@@ -116,11 +116,6 @@ func (s *server) notifyEndpoint(incoming imessage.Incoming) error {
 		Message:        incoming.Text,
 		Attachment:     incoming.Attachment,
 		AttachmentType: incoming.AttachmentType,
-	}
-	// If a request token was specified, then we include it in the request.
-	if requestToken != nil && *requestToken != "" {
-		t := *requestToken
-		er.Token = &t
 	}
 	buf, err := json.Marshal(er)
 	if err != nil {
